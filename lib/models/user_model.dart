@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   String id;
   String name;
@@ -5,7 +7,7 @@ class UserModel {
   String bloodType;
   String role; // donor / receiver
   bool isAvailable;
-  String? lastDonationDate;
+  DateTime? lastDonationDate;
 
   UserModel({
     required this.id,
@@ -37,7 +39,9 @@ class UserModel {
       bloodType: map['bloodType'],
       role: map['role'],
       isAvailable: map['isAvailable'],
-      lastDonationDate: map['lastDonationDate'],
+      lastDonationDate: map['lastDonationDate'] != null
+          ? (map['lastDonationDate'] as Timestamp).toDate()
+          : null,
     );
   }
 }
