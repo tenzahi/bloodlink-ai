@@ -2,72 +2,58 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 
 class UserService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // Sauvegarde ou met à jour un utilisateur
   Future<void> saveUser(UserModel user) async {
-    await _firestore
-        .collection('users')
-        .doc(user.id)
-        .set(user.toMap());
+    await _db.collection('users').doc(user.id).set(user.toMap());
   }
-  Stream<List<UserModel>> getDonors() {
-    return FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'donor')
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => UserModel.fromMap(doc.data()))
-          .where((user) => isEligible(user.lastDonationDate)) // ✅ ici
-          .toList();
-    });
-  }
-  Stream<List<UserModel>> getDonorsByBlood(String blood) {
-    return FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'donor')
-        .where('bloodType', isEqualTo: blood)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => UserModel.fromMap(doc.data()))
-          .where((user) => isEligible(user.lastDonationDate)) // ✅ ici
-          .toList();
-    });
-  }
-  Future<void> updateAvailability(String userId, bool status) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .update({
-      'isAvailable': status,
-      'lastDonationDate': DateTime.now(),
-    });
-  }
-  bool isEligible(DateTime? lastDonation) {
-    if (lastDonation == null) return true;
 
-    final diff = DateTime.now().difference(lastDonation).inDays;
-    return diff >= 90;
-  }
-  Future<void> updateRole(String userId, String newRole) async {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .update({
-      'role': newRole,
-    });
-  }
+  // Récupère un utilisateur par son ID
   Future<UserModel?> getUser(String userId) async {
-    var doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .get();
-
-    if (doc.exists) {
-      return UserModel.fromMap(doc.data()!);
-    }
+    final doc = await _db.collection('users').doc(userId).get();
+    if (doc.exists) return UserModel.fromMap(doc.data()!, doc.id);
     return null;
   }
 
+  // Change le rôle (donor <-> receiver)
+  Future<void> switchRole(String userId, String newRole) async {
+    await _db.collection('users').doc(userId).update({'role': newRole});
+  }
+
+  // Appelé quand le donneur clique "J'ai donné mon sang"
+  Future<void> markAsDonated(String userId) async {
+    await _db.collection('users').doc(userId).update({
+      'isAvailable': false,
+      'lastDonationDate': Timestamp.now(),
+    });
+  }
+
+  // Vérifie et remet disponible si 3 mois sont passés
+  Future<void> checkAndUpdateAvailability(String userId) async {
+    final user = await getUser(userId);
+    if (user == null || user.isAvailable) return;
+
+    if (user.lastDonationDate != null) {
+      final threeMonthsLater =
+      user.lastDonationDate!.add(const Duration(days: 90));
+      if (DateTime.now().isAfter(threeMonthsLater)) {
+        await _db.collection('users').doc(userId).update({
+          'isAvailable': true,
+        });
+      }
+    }
+  }
+
+  // Recherche donneurs par groupe sanguin
+  Stream<List<UserModel>> searchDonors(String bloodType) {
+    return _db
+        .collection('users')
+        .where('role', isEqualTo: 'donor')
+        .where('isAvailable', isEqualTo: true)
+        .where('bloodType', isEqualTo: bloodType)
+        .snapshots()
+        .map((snap) =>
+        snap.docs.map((d) => UserModel.fromMap(d.data(), d.id)).toList());
+  }
 }

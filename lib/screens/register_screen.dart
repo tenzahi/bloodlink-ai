@@ -2,228 +2,371 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import '../models/user_model.dart';
-import '../theme/bloodlink_theme.dart';
 
 class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen>
-    with SingleTickerProviderStateMixin {
-  final AuthService auth = AuthService();
-  final UserService userService = UserService();
+class _RegisterScreenState extends State<RegisterScreen> {
+  final AuthService _auth = AuthService();
+  final UserService _userService = UserService();
 
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _nameController     = TextEditingController();
+  final _phoneController    = TextEditingController();
+  final _emailController    = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  static const List<String> _bloodTypes = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-',
+  String _selectedBloodType = 'A+';
+  bool _isLoading       = false;
+  bool _obscurePassword = true;
+
+  final List<String> _bloodTypes = [
+    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'
   ];
-
-  String? _bloodType;
-
-  String message = "";
-
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    ));
-    _animController.forward();
-  }
 
   @override
   void dispose() {
-    _animController.dispose();
-    nameController.dispose();
-    emailController.dispose();
-    passwordController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final userCredential = await _auth.register(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (userCredential != null) {
+        final user = UserModel(
+          id:               userCredential.uid,
+          name:             _nameController.text.trim(),
+          email:            _emailController.text.trim(),
+          phone:            _phoneController.text.trim(), // ← WhatsApp
+          bloodType:        _selectedBloodType,
+          role:             'receiver',
+          isAvailable:      false,
+          lastDonationDate: null,
+        );
+
+        await _userService.saveUser(user);
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/choose-role');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Register'),
-      ),
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(BloodlinkTheme.radiusLg),
-                  ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+
+                // ── Retour ──────────────────────────────────────────
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
                   child: Container(
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(BloodlinkTheme.radiusLg),
                       color: Colors.white,
-                      boxShadow: BloodlinkTheme.cardShadow(context),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200),
                     ),
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Icon(
-                          Icons.how_to_reg_rounded,
-                          size: 44,
-                          color: scheme.primary,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Create account',
-                          textAlign: TextAlign.center,
-                          style: textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Join BloodLink AI to donate or request blood.',
-                          textAlign: TextAlign.center,
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        TextField(
-                          controller: nameController,
-                          textInputAction: TextInputAction.next,
-                          textCapitalization: TextCapitalization.words,
-                          decoration: const InputDecoration(
-                            labelText: 'Full name',
-                            prefixIcon: Icon(Icons.person_outline_rounded),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          autocorrect: false,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            hintText: 'you@example.com',
-                            prefixIcon: Icon(Icons.mail_outline_rounded),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: passwordController,
-                          obscureText: true,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: Icon(Icons.lock_outline_rounded),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          value: _bloodType,
-                          decoration: const InputDecoration(
-                            labelText: 'Blood type',
-                            prefixIcon: Icon(Icons.bloodtype_rounded),
-                          ),
-                          borderRadius: BorderRadius.circular(
-                            BloodlinkTheme.radius,
-                          ),
-                          hint: const Text('Select type'),
-                          items: _bloodTypes
-                              .map(
-                                (t) => DropdownMenuItem<String>(
-                                  value: t,
-                                  child: Text(t),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) => setState(() => _bloodType = v),
-                        ),
-                        const SizedBox(height: 28),
-                        ElevatedButton(
-                          onPressed: () async {
-                            var user = await auth.register(
-                              emailController.text,
-                              passwordController.text,
-                            );
+                    child: const Icon(Icons.arrow_back_ios_new,
+                        size: 16, color: Colors.black87),
+                  ),
+                ),
 
-                            if (user != null) {
-                              await userService.saveUser(
-                                UserModel(
-                                  id: user.uid,
-                                  name: nameController.text,
-                                  email: emailController.text,
-                                  bloodType: _bloodType ?? '',
-                                  role: "receiver",
-                                  isAvailable: true,
-                                ),
-                              );
+                const SizedBox(height: 28),
 
-                              setState(() {
-                                message = "Register success";
-                              });
-                            } else {
-                              setState(() {
-                                message = "Register failed";
-                              });
-                            }
-                          },
-                          child: const Text('Register'),
+                // ── Titre ───────────────────────────────────────────
+                const Text(
+                  'Créer un compte',
+                  style: TextStyle(
+                      fontSize: 26, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Rejoignez BloodLink AI et sauvez des vies.',
+                  style: TextStyle(
+                      fontSize: 14, color: Colors.grey.shade600),
+                ),
+
+                const SizedBox(height: 32),
+
+                // ── Nom complet ─────────────────────────────────────
+                _buildLabel('Nom complet'),
+                _buildTextField(
+                  controller: _nameController,
+                  hint: 'Votre nom complet',
+                  icon: Icons.person_outline,
+                  validator: (val) =>
+                  val == null || val.isEmpty ? 'Champ requis' : null,
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Email ───────────────────────────────────────────
+                _buildLabel('Email'),
+                _buildTextField(
+                  controller: _emailController,
+                  hint: 'exemple@email.com',
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Champ requis';
+                    if (!val.contains('@')) return 'Email invalide';
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Numéro WhatsApp ─────────────────────────────────
+                _buildLabel('Numéro WhatsApp'),
+                _buildTextField(
+                  controller: _phoneController,
+                  hint: '+213 6XX XXX XXX',
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  validator: (val) =>
+                  val == null || val.isEmpty ? 'Champ requis' : null,
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Mot de passe ────────────────────────────────────
+                _buildLabel('Mot de passe'),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Minimum 6 caractères',
+                    prefixIcon: Icon(Icons.lock_outline,
+                        color: Colors.grey.shade400, size: 20),
+                    suffixIcon: GestureDetector(
+                      onTap: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                      child: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: Colors.grey.shade400,
+                        size: 20,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: Colors.red.shade400, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 14, horizontal: 16),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Champ requis';
+                    if (val.length < 6) return 'Minimum 6 caractères';
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Groupe sanguin ──────────────────────────────────
+                _buildLabel('Groupe sanguin'),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedBloodType,
+                      isExpanded: true,
+                      icon: Icon(Icons.keyboard_arrow_down,
+                          color: Colors.grey.shade400),
+                      items: _bloodTypes
+                          .map((bt) => DropdownMenuItem(
+                        value: bt,
+                        child: Row(
+                          children: [
+                            Icon(Icons.bloodtype,
+                                color: Colors.red.shade300,
+                                size: 18),
+                            const SizedBox(width: 10),
+                            Text(bt,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500)),
+                          ],
                         ),
-                        if (message.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Text(
-                            message,
-                            textAlign: TextAlign.center,
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: scheme.error,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ],
+                      ))
+                          .toList(),
+                      onChanged: (val) =>
+                          setState(() => _selectedBloodType = val!),
                     ),
                   ),
                 ),
-              ),
+
+                const SizedBox(height: 32),
+
+                // ── Bouton S'inscrire ───────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _register,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    )
+                        : const Text(
+                      "S'inscrire",
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Lien connexion ──────────────────────────────────
+                Center(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pushReplacementNamed(
+                        context, '/login'),
+                    child: RichText(
+                      text: TextSpan(
+                        text: 'Déjà un compte ? ',
+                        style: TextStyle(
+                            color: Colors.grey.shade600, fontSize: 14),
+                        children: [
+                          TextSpan(
+                            text: 'Se connecter',
+                            style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+          BorderSide(color: Colors.red.shade400, width: 1.5),
+        ),
+        contentPadding:
+        const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      ),
+      validator: validator,
     );
   }
 }

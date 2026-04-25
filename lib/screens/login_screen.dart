@@ -1,167 +1,295 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import '../theme/bloodlink_theme.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
-  final AuthService auth = AuthService();
+class _LoginScreenState extends State<LoginScreen> {
+  final AuthService _auth = AuthService();
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  String message = "";
-
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    ));
-    _animController.forward();
-  }
+  bool _isLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _animController.dispose();
-    emailController.dispose();
-    passwordController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = await _auth.login(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
+
+      if (user != null && mounted) {
+        // ✅ Remplace TOUT le stack de navigation par Home
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/home',
+              (route) => false, // supprime toutes les pages en dessous
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Une erreur est survenue';
+
+      if (e.code == 'user-not-found') {
+        message = 'Aucun compte trouvé avec cet email.';
+      } else if (e.code == 'wrong-password') {
+        message = 'Mot de passe incorrect.';
+      } else if (e.code == 'invalid-email') {
+        message = 'Email invalide.';
+      } else if (e.code == 'invalid-credential') {
+        message = 'Email ou mot de passe incorrect.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Login'),
-      ),
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(BloodlinkTheme.radiusLg),
-                  ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+
+                // Retour
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
                   child: Container(
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(BloodlinkTheme.radiusLg),
                       color: Colors.white,
-                      boxShadow: BloodlinkTheme.cardShadow(context),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200),
                     ),
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Icon(
-                          Icons.lock_person_rounded,
-                          size: 44,
-                          color: scheme.primary,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Welcome back',
-                          textAlign: TextAlign.center,
-                          style: textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Sign in with your email and password.',
-                          textAlign: TextAlign.center,
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface.withValues(alpha: 0.65),
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        TextField(
-                          controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          autocorrect: false,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            hintText: 'you@example.com',
-                            prefixIcon: Icon(Icons.mail_outline_rounded),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: passwordController,
-                          obscureText: true,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: Icon(Icons.lock_outline_rounded),
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        ElevatedButton(
-                          onPressed: () async {
-                            var user = await auth.login(
-                              emailController.text,
-                              passwordController.text,
-                            );
+                    child: const Icon(Icons.arrow_back_ios_new,
+                        size: 16, color: Colors.black87),
+                  ),
+                ),
 
-                            if (user != null) {
-                              setState(() {
-                                message = "Login success";
-                              });
+                const SizedBox(height: 40),
 
-                              Navigator.pushReplacementNamed(context, '/role');
-                            } else {
-                              setState(() {
-                                message = "Login failed";
-                              });
-                            }
-                          },
-                          child: const Text('Login'),
-                        ),
-                        if (message.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Text(
-                            message,
-                            textAlign: TextAlign.center,
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: scheme.error,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ],
+                // Logo
+                Center(
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.bloodtype,
+                        size: 36, color: Colors.red.shade600),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Titre
+                const Center(
+                  child: Text(
+                    'Bon retour !',
+                    style: TextStyle(
+                        fontSize: 26, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    'Connectez-vous à votre compte BloodLink AI',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                ),
+
+                const SizedBox(height: 40),
+
+                // Email
+                const Text('Email',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    hintText: 'exemple@email.com',
+                    prefixIcon: Icon(Icons.email_outlined,
+                        color: Colors.grey.shade400, size: 20),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                      BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                      BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: Colors.red.shade400, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 14, horizontal: 16),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Champ requis';
+                    if (!val.contains('@')) return 'Email invalide';
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Mot de passe
+                const Text('Mot de passe',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: '••••••••',
+                    prefixIcon: Icon(Icons.lock_outline,
+                        color: Colors.grey.shade400, size: 20),
+                    suffixIcon: GestureDetector(
+                      onTap: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                      child: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: Colors.grey.shade400,
+                        size: 20,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                      BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                      BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                          color: Colors.red.shade400, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        vertical: 14, horizontal: 16),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return 'Champ requis';
+                    if (val.length < 6) return 'Minimum 6 caractères';
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 32),
+
+                // Bouton connexion
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding:
+                      const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    )
+                        : const Text(
+                      'Se connecter',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
-              ),
+
+                const SizedBox(height: 20),
+
+                // Lien inscription
+                Center(
+                  child: GestureDetector(
+                    onTap: () => Navigator.pushReplacementNamed(
+                        context, '/register'),
+                    child: RichText(
+                      text: TextSpan(
+                        text: 'Pas encore de compte ? ',
+                        style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14),
+                        children: [
+                          TextSpan(
+                            text: 'S\'inscrire',
+                            style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+              ],
             ),
           ),
         ),
