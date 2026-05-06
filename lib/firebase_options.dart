@@ -21,10 +21,7 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
@@ -45,7 +42,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyBf9IMEqlfUFPPTyu_s_KoOmEXyMPzZ6XQ',
-    appId: '1:822544101343:web:b94e012a5a9d3841611e6a',
+    appId: '1:822544101343:web:33cbb8f3b3eecf23611e6a',
     messagingSenderId: '822544101343',
     projectId: 'bloodlink-ai-33f90',
     authDomain: 'bloodlink-ai-33f90.firebaseapp.com',
@@ -78,4 +75,13 @@ class DefaultFirebaseOptions {
     authDomain: 'bloodlink-ai-33f90.firebaseapp.com',
     storageBucket: 'bloodlink-ai-33f90.firebasestorage.app',
   );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBsnRM95YovPJlqCTOZLIuTsOrN1kKQkX0',
+    appId: '1:822544101343:android:03e1f121ec5319f8611e6a',
+    messagingSenderId: '822544101343',
+    projectId: 'bloodlink-ai-33f90',
+    storageBucket: 'bloodlink-ai-33f90.firebasestorage.app',
+  );
+
 }

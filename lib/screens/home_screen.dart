@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/user_model.dart';
 import '../services/user_service.dart';
+import '../services/notification_service.dart';
+import 'main_shell.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,6 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() { _user = newUser; _loading = false; });
     } else {
       setState(() { _user = user; _loading = false; });
+      // Sauvegarde token FCM
+      await NotificationService.saveToken(_uid);
     }
   }
 
@@ -78,8 +82,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+
     if (confirm == true) {
       await _userService.markAsDonated(_uid);
+
+      // ── Notifie les receveurs compatibles ──────────────────
+      await NotificationService.notifyReceivers(
+        bloodType: _user!.bloodType,
+        donorName: _user!.name,
+      );
+
       if (!mounted) return;
       await _loadUser();
       if (mounted) {
@@ -136,7 +148,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ── Loading ────────────────────────────────────────────────
     if (_loading) {
       return const Center(
           child: CircularProgressIndicator(color: Colors.red));
@@ -146,7 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final available = _user!.isAvailable;
     final isDark    = Theme.of(context).brightness == Brightness.dark;
 
-    // ── Pas de Scaffold : MainShell le fournit ─────────────────
     return RefreshIndicator(
       color: Colors.red,
       onRefresh: _loadUser,
@@ -157,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // 1. Header Bonjour ──────────────────────────────────
+            // ── Header ─────────────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -184,15 +194,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 14),
                   Row(children: [
-                    _Badge(icon: Icons.bloodtype, label: _user!.bloodType),
+                    _Badge(
+                        icon: Icons.bloodtype,
+                        label: _user!.bloodType),
                     const SizedBox(width: 8),
                     _Badge(
-                      icon: isDonor ? Icons.favorite : Icons.local_hospital,
+                      icon: isDonor
+                          ? Icons.favorite
+                          : Icons.local_hospital,
                       label: isDonor ? 'Donneur' : 'Receveur',
                     ),
                     const SizedBox(width: 8),
                     _Badge(
-                      icon: available ? Icons.check_circle : Icons.timer,
+                      icon: available
+                          ? Icons.check_circle
+                          : Icons.timer,
                       label: available ? 'Disponible' : 'Indisponible',
                       color: available
                           ? Colors.green.shade300
@@ -205,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 20),
 
-            // 2. Toggle disponibilité ────────────────────────────
+            // ── Toggle disponibilité (donneur) ─────────────────
             if (isDonor) ...[
               const _Title('Ma disponibilité'),
               const SizedBox(height: 10),
@@ -260,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
             ],
 
-            // 3. Statut donneur ───────────────────────────────────
+            // ── Statut donneur ─────────────────────────────────
             if (isDonor) ...[
               const _Title('Mon statut de donneur'),
               const SizedBox(height: 10),
@@ -274,7 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         available
                             ? Icons.check_circle_rounded
                             : Icons.timer_rounded,
-                        color: available ? Colors.green : Colors.orange,
+                        color:
+                        available ? Colors.green : Colors.orange,
                         size: 22,
                       ),
                       const SizedBox(width: 8),
@@ -292,21 +309,24 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ]),
+
                     if (!available) ...[
                       const SizedBox(height: 16),
                       Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Récupération',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500)),
-                            Text('${_daysRemaining()} jours restants',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.orange.shade700)),
-                          ]),
+                        mainAxisAlignment:
+                        MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Récupération',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500)),
+                          Text('${_daysRemaining()} jours restants',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.orange.shade700)),
+                        ],
+                      ),
                       const SizedBox(height: 6),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
@@ -321,15 +341,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 10),
                       Row(children: [
                         Icon(Icons.calendar_today,
-                            size: 14, color: Colors.grey.shade500),
+                            size: 14,
+                            color: Colors.grey.shade500),
                         const SizedBox(width: 6),
                         Text(
-                          'Prochain don possible : ${_nextDonationDate()}',
+                          'Prochain don : ${_nextDonationDate()}',
                           style: TextStyle(
-                              fontSize: 12, color: Colors.grey.shade600),
+                              fontSize: 12,
+                              color: Colors.grey.shade600),
                         ),
                       ]),
                     ],
+
                     if (available) ...[
                       const SizedBox(height: 16),
                       SizedBox(
@@ -341,9 +364,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red.shade600,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
+                                borderRadius:
+                                BorderRadius.circular(14)),
                             elevation: 0,
                           ),
                         ),
@@ -355,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
             ],
 
-            // 4. Groupes compatibles ─────────────────────────────
+            // ── Groupes compatibles ────────────────────────────
             const _Title('Groupes compatibles avec moi'),
             const SizedBox(height: 10),
             _Card(
@@ -365,25 +390,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text('Mon groupe : ${_user!.bloodType}',
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade500)),
+                          fontSize: 12,
+                          color: Colors.grey.shade500)),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _compatibleGroups().map((g) => Container(
+                    children: _compatibleGroups()
+                        .map((g) => Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.red.shade200),
+                        borderRadius:
+                        BorderRadius.circular(20),
+                        border: Border.all(
+                            color: Colors.red.shade200),
                       ),
                       child: Text(g,
                           style: TextStyle(
                               color: Colors.red.shade700,
                               fontWeight: FontWeight.w600,
                               fontSize: 13)),
-                    )).toList(),
+                    ))
+                        .toList(),
                   ),
                 ],
               ),
@@ -391,7 +421,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 20),
 
-            // 5. Actions rapides ─────────────────────────────────
+            // ── Actions rapides ────────────────────────────────
+            // ── Actions rapides ────────────────────────────────────────
             const _Title('Actions rapides'),
             const SizedBox(height: 10),
             GridView.count(
@@ -407,14 +438,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: 'Chercher un donneur',
                   subtitle: 'Trouver par groupe',
                   color: Colors.red,
-                  onTap: () {},
+                  onTap: () {
+                    // Navigue vers l'onglet Recherche (index 1)
+                    final shell = context
+                        .findAncestorStateOfType<MainShellState>();
+                    shell?.setIndex(1);
+                  },
                 ),
                 _QuickCard(
                   icon: Icons.document_scanner_rounded,
                   label: 'Scanner document',
                   subtitle: 'OCR + Traduction',
                   color: Colors.orange,
-                  onTap: () {},
+                  onTap: () {
+                    // Navigue vers l'onglet Scanner (index 2)
+                    final shell = context
+                        .findAncestorStateOfType<MainShellState>();
+                    shell?.setIndex(2);
+                  },
                 ),
                 _QuickCard(
                   icon: Icons.swap_horiz_rounded,
@@ -432,10 +473,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 20),
 
-            // 6. Le saviez-vous ──────────────────────────────────
+            // ── Le saviez-vous ─────────────────────────────────
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -479,7 +519,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── Widgets locaux ────────────────────────────────────────────────────────
+// ── Widgets locaux ─────────────────────────────────────────────────────────
 
 class _Card extends StatelessWidget {
   final Widget child;
@@ -510,8 +550,9 @@ class _Title extends StatelessWidget {
   final String title;
   const _Title(this.title);
   @override
-  Widget build(BuildContext context) =>
-      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+  Widget build(BuildContext context) => Text(title,
+      style:
+      const TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
 }
 
 class _Badge extends StatelessWidget {
@@ -522,7 +563,8 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(20),
@@ -547,8 +589,11 @@ class _QuickCard extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   const _QuickCard({
-    required this.icon, required this.label,
-    required this.subtitle, required this.color, required this.onTap,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
   });
   @override
   Widget build(BuildContext context) {

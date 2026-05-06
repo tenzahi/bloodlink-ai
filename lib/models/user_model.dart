@@ -4,11 +4,12 @@ class UserModel {
   final String id;
   final String name;
   final String email;
-  final String phone;        // ← nouveau
+  final String phone;
   final String bloodType;
   final String role;
   final bool isAvailable;
   final DateTime? lastDonationDate;
+  final String? fcmToken;        // ← ajoute ça
 
   UserModel({
     required this.id,
@@ -19,6 +20,7 @@ class UserModel {
     required this.role,
     required this.isAvailable,
     this.lastDonationDate,
+    this.fcmToken,               // ← ajoute ça
   });
 
   Map<String, dynamic> toMap() => {
@@ -31,6 +33,7 @@ class UserModel {
     'lastDonationDate': lastDonationDate != null
         ? Timestamp.fromDate(lastDonationDate!)
         : null,
+    'fcmToken': fcmToken,        // ← ajoute ça
   };
 
   factory UserModel.fromMap(Map<String, dynamic> map, String id) => UserModel(
@@ -44,5 +47,6 @@ class UserModel {
     lastDonationDate: map['lastDonationDate'] != null
         ? (map['lastDonationDate'] as Timestamp).toDate()
         : null,
+    fcmToken: map['fcmToken'],   // ← ajoute ça
   );
 }

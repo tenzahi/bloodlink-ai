@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_state.dart';
-import '../main.dart';
-
+import 'main_shell.dart';
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
   @override
@@ -10,6 +10,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+
+  String t(String key) => appTexts[_lang]?[key] ?? key;
   bool _darkMode      = false;
   bool _notifications = true;
   String _lang        = 'fr';
@@ -23,8 +25,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _darkMode = themeNotifier.value == ThemeMode.dark;
-    _lang     = langNotifier.value;
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _darkMode      = themeNotifier.value == ThemeMode.dark;
+      _lang          = langNotifier.value;
+      _notifications = prefs.getBool('notifications') ?? true;
+    });
   }
 
   Future<void> _toggleDark(bool val) async {
@@ -39,20 +49,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     langNotifier.value = lang;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('lang', lang);
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _toggleNotif(bool val) async {
     setState(() => _notifications = val);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('notifications', val);
+
+    // Active ou désactive les notifications FCM
+    if (val) {
+      await FirebaseMessaging.instance.requestPermission();
+    } else {
+      // Désabonne des notifications
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: false,
+        sound: false,
+      );
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(val
+              ? 'Notifications activées ✅'
+              : 'Notifications désactivées'),
+          backgroundColor: val ? Colors.green : Colors.grey,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Paramètres',
+          title: Text(t('parametres'),
             style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
@@ -60,9 +97,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
 
-          // ── Apparence ────────────────────────────────────────────
-          _SectionHeader(title: 'Apparence'),
-
+          // ── Apparence ──────────────────────────────────────
+          const _SectionHeader(title: 'Apparence'),
           _SettingsCard(children: [
             _ToggleTile(
               icon: Icons.dark_mode_rounded,
@@ -76,53 +112,83 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 16),
 
-          // ── Langue ───────────────────────────────────────────────
-          _SectionHeader(title: 'Langue'),
-
+          // ── Langue ─────────────────────────────────────────
+          const _SectionHeader(title: 'Langue'),
           _SettingsCard(children: [
             ListTile(
-              leading: _IconBox(
+              leading: const _IconBox(
                   icon: Icons.language_rounded, color: Colors.teal),
               title: const Text('Langue de l\'app',
                   style: TextStyle(fontWeight: FontWeight.w500)),
               subtitle: Text(_langLabels[_lang] ?? 'Français'),
-              trailing: const Icon(Icons.chevron_right, size: 20),
+              trailing:
+              const Icon(Icons.chevron_right, size: 20),
               onTap: _showLangSheet,
             ),
           ]),
 
           const SizedBox(height: 16),
 
-          // ── Notifications ─────────────────────────────────────────
-          _SectionHeader(title: 'Notifications'),
-
+          // ── Notifications ──────────────────────────────────
+          const _SectionHeader(title: 'Notifications'),
           _SettingsCard(children: [
             _ToggleTile(
               icon: Icons.notifications_rounded,
               iconColor: Colors.orange,
-              title: 'Notifications',
-              subtitle: 'Rappels de disponibilité',
+              title: 'Notifications push',
+              subtitle: 'Alertes donneurs disponibles',
               value: _notifications,
               onChanged: _toggleNotif,
             ),
           ]),
 
+          const SizedBox(height: 8),
+
+          // Info notifications
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline,
+                    color: Colors.orange.shade600, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Vous serez notifié quand un donneur compatible '
+                        'avec votre groupe sanguin est disponible.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade700,
+                        height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 16),
 
-          // ── À propos ──────────────────────────────────────────────
-          _SectionHeader(title: 'À propos'),
-
+          // ── À propos ───────────────────────────────────────
+          const _SectionHeader(title: 'À propos'),
           _SettingsCard(children: [
             ListTile(
-              leading: _IconBox(
+              leading: const _IconBox(
                   icon: Icons.bloodtype_rounded, color: Colors.red),
               title: const Text('BloodLink AI',
                   style: TextStyle(fontWeight: FontWeight.w500)),
               subtitle: const Text('Version 1.0.0'),
             ),
-            Divider(height: 1, indent: 56, color: Colors.grey.shade200),
+            Divider(
+                height: 1, indent: 56, color: Colors.grey.shade200),
             ListTile(
-              leading: _IconBox(
+              leading: const _IconBox(
                   icon: Icons.shield_outlined, color: Colors.green),
               title: const Text('Politique de confidentialité',
                   style: TextStyle(fontWeight: FontWeight.w500)),
@@ -150,7 +216,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2)),
@@ -177,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-// ── Widgets ───────────────────────────────────────────────────────────────────
+// ── Widgets ────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -230,9 +297,12 @@ class _ToggleTile extends StatelessWidget {
   final bool value;
   final Function(bool) onChanged;
   const _ToggleTile({
-    required this.icon, required this.iconColor,
-    required this.title, required this.subtitle,
-    required this.value, required this.onChanged,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
   });
   @override
   Widget build(BuildContext context) {
@@ -241,7 +311,8 @@ class _ToggleTile extends StatelessWidget {
       title: Text(title,
           style: const TextStyle(fontWeight: FontWeight.w500)),
       subtitle: Text(subtitle,
-          style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+          style:
+          TextStyle(color: Colors.grey.shade500, fontSize: 12)),
       value: value,
       activeColor: Colors.red.shade600,
       onChanged: onChanged,
@@ -256,7 +327,8 @@ class _IconBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 36, height: 36,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(10),
