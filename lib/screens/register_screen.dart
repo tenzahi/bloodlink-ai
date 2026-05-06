@@ -20,6 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
 
   String _selectedBloodType = 'A+';
+  String _selectedRole      = 'receiver'; // ← par défaut receiver
   bool _isLoading       = false;
   bool _obscurePassword = true;
 
@@ -51,10 +52,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           id:               userCredential.uid,
           name:             _nameController.text.trim(),
           email:            _emailController.text.trim(),
-          phone:            _phoneController.text.trim(), // ← WhatsApp
+          phone:            _phoneController.text.trim(),
           bloodType:        _selectedBloodType,
-          role:             'receiver',
-          isAvailable:      false,
+          role:             _selectedRole,                    // ✅ corrigé
+          isAvailable:      _selectedRole == 'donor',        // ✅ corrigé
           lastDonationDate: null,
         );
 
@@ -160,7 +161,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _buildLabel('Numéro WhatsApp'),
                 _buildTextField(
                   controller: _phoneController,
-                  hint: '+213 6XX XXX XXX',
+                  hint: '+216 XXX XXX XXX',
                   icon: Icons.phone_outlined,
                   keyboardType: TextInputType.phone,
                   validator: (val) =>

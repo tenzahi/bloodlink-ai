@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../app_state.dart';           // ← importe ici
+import '../app_state.dart';
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
+import '../models/user_model.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'Scanner_screen.dart';
@@ -42,8 +44,24 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   final AuthService _auth = AuthService();
+  final UserService _userService = UserService();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  UserModel? _user;
 
-  final List<Widget> _pages = [
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final user = await _userService.getUser(uid);
+    if (mounted) setState(() => _user = user);
+  }
+
+  final List<Widget> _pages =  [
     HomeScreen(),
     SearchScreen(),
     ScannerScreen(),
@@ -61,8 +79,7 @@ class _MainShellState extends State<MainShell> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(t('deconnecter'),
             style: const TextStyle(fontWeight: FontWeight.bold)),
         content: Text(t('deconnecter_msg')),
@@ -72,10 +89,7 @@ class _MainShellState extends State<MainShell> {
             child: Text(t('annuler')),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _logout();
-            },
+            onPressed: () { Navigator.pop(context); _logout(); },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -92,84 +106,145 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final initial = (_user?.name.isNotEmpty == true)
+        ? _user!.name[0].toUpperCase()
+        : '?';
 
     return ValueListenableBuilder<String>(
       valueListenable: langNotifier,
       builder: (_, lang, __) => Scaffold(
-        appBar: AppBar(
-          elevation: 0,
-          backgroundColor: Colors.red.shade700,
-          title: const Row(
+        key: _scaffoldKey,
+        backgroundColor: const Color(0xFFF8F9FA),
+
+        // ── DRAWER ──────────────────────────────────────────────
+        drawer: Drawer(
+          child: Column(
             children: [
-              Icon(Icons.bloodtype, color: Colors.white, size: 24),
-              SizedBox(width: 8),
-              Text(
-                'BloodLink AI',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade800, Colors.red.shade500],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: Colors.white.withOpacity(0.25),
+                      child: Text(initial,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(_user?.name ?? '',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    Text(_user?.email ?? '',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12)),
+                  ],
                 ),
               ),
+              const SizedBox(height: 8),
+              _DrawerItem(
+                icon: Icons.person_outline,
+                label: t('profil'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/profile');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.settings_outlined,
+                label: t('parametres'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/settings');
+                },
+              ),
+              _DrawerItem(
+                icon: Icons.swap_horiz_rounded,
+                label: t('changer_role'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/choose-role');
+                },
+              ),
+              const Spacer(),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: Text(t('deconnexion'),
+                    style: const TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showLogoutDialog();
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+
+        // ── APPBAR (même style que HomeScreen) ───────────────────
+        appBar: AppBar(
+          backgroundColor: Colors.red.shade700,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.water_drop, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('BloodLink AI',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
           actions: [
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              elevation: 8,
-              onSelected: (v) {
-                if (v == 'profile')
-                  Navigator.pushNamed(context, '/profile');
-                if (v == 'settings')
-                  Navigator.pushNamed(context, '/settings');
-                if (v == 'role')
-                  Navigator.pushNamed(context, '/choose-role');
-                if (v == 'logout') _showLogoutDialog();
-              },
-              itemBuilder: (_) => [
-                _popupItem(Icons.person_outline,    t('profil'),        'profile',  Colors.blue),
-                _popupItem(Icons.settings_outlined,  t('parametres'),   'settings', Colors.grey),
-                _popupItem(Icons.swap_horiz,         t('changer_role'), 'role',     Colors.purple),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'logout',
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(Icons.logout,
-                            color: Colors.red.shade600, size: 18),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        t('deconnexion'),
-                        style: TextStyle(
-                          color: Colors.red.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: GestureDetector(
+                onTap: () => Navigator.pushNamed(context, '/profile'),
+                child: CircleAvatar(
+                  radius: 17,
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                  child: Text(initial,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold)),
                 ),
-              ],
+              ),
             ),
           ],
         ),
 
+        // ── BODY ────────────────────────────────────────────────
         body: IndexedStack(index: _currentIndex, children: _pages),
 
+        // ── BOTTOM NAV ──────────────────────────────────────────
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withOpacity(0.08),
                 blurRadius: 16,
                 offset: const Offset(0, -2),
               ),
@@ -207,26 +282,24 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
+}
 
-  PopupMenuItem<String> _popupItem(
-      IconData icon, String label, String value, Color color) {
-    return PopupMenuItem(
-      value: value,
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Text(label,
-              style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
-      ),
+class _DrawerItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _DrawerItem(
+      {required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.grey.shade600, size: 22),
+      title: Text(label,
+          style: const TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w500)),
+      onTap: onTap,
+      horizontalTitleGap: 8,
     );
   }
 }

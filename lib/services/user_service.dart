@@ -17,10 +17,18 @@ class UserService {
   }
 
   // Change le rôle (donor <-> receiver)
+  // ✅ Corrigé
   Future<void> switchRole(String userId, String newRole) async {
-    await _db.collection('users').doc(userId).update({'role': newRole});
+    await _db.collection('users').doc(userId).update({
+      'role': newRole,
+      'isAvailable': newRole == 'donor', // true si donor, false si receiver
+    });
   }
-
+  Future<void> updateAvailability(String userId, bool value) async {
+    await _db.collection('users').doc(userId).update({
+      'isAvailable': value,
+    });
+  }
   // Appelé quand le donneur clique "J'ai donné mon sang"
   Future<void> markAsDonated(String userId) async {
     await _db.collection('users').doc(userId).update({

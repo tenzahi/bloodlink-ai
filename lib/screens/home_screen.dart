@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadUser() async {
     await _userService.checkAndUpdateAvailability(_uid);
     final user = await _userService.getUser(_uid);
+    if (!mounted) return;
     if (user == null) {
       final fu = FirebaseAuth.instance.currentUser!;
       final newUser = UserModel(
@@ -37,10 +38,18 @@ class _HomeScreenState extends State<HomeScreen> {
         lastDonationDate: null,
       );
       await _userService.saveUser(newUser);
+      if (!mounted) return;
       setState(() { _user = newUser; _loading = false; });
     } else {
       setState(() { _user = user; _loading = false; });
     }
+  }
+
+  Future<void> _toggleAvailability() async {
+    if (_user == null || _user!.role != 'donor') return;
+    await _userService.updateAvailability(_uid, !_user!.isAvailable);
+    if (!mounted) return;
+    await _loadUser();
   }
 
   Future<void> _markDonated() async {
@@ -71,18 +80,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (confirm == true) {
       await _userService.markAsDonated(_uid);
+      if (!mounted) return;
       await _loadUser();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.favorite, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text('Merci pour votre don ! Repos de 3 mois.'),
-              ],
-            ),
-            backgroundColor: Colors.green.shade600,
+            content: const Row(children: [
+              Icon(Icons.favorite, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Merci pour votre don ! Repos de 3 mois.'),
+            ]),
+            backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)),
@@ -92,367 +100,425 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Calcul jours restants avant prochain don
   int _daysRemaining() {
     if (_user?.lastDonationDate == null) return 0;
     final next = _user!.lastDonationDate!.add(const Duration(days: 90));
-    final remaining = next.difference(DateTime.now()).inDays;
-    return remaining < 0 ? 0 : remaining;
+    final r = next.difference(DateTime.now()).inDays;
+    return r < 0 ? 0 : r;
   }
 
   String _nextDonationDate() {
     if (_user?.lastDonationDate == null) return '—';
     final next = _user!.lastDonationDate!.add(const Duration(days: 90));
-    return '${next.day.toString().padLeft(2, '0')}/${next.month.toString().padLeft(2, '0')}/${next.year}';
+    return '${next.day.toString().padLeft(2, '0')}/'
+        '${next.month.toString().padLeft(2, '0')}/${next.year}';
   }
 
   double _availabilityProgress() {
     if (_user?.lastDonationDate == null) return 1.0;
-    final daysSince =
-        DateTime.now().difference(_user!.lastDonationDate!).inDays;
-    return (daysSince / 90).clamp(0.0, 1.0);
+    final d = DateTime.now().difference(_user!.lastDonationDate!).inDays;
+    return (d / 90).clamp(0.0, 1.0);
+  }
+
+  List<String> _compatibleGroups() {
+    const map = {
+      'A+':  ['A+', 'A-', 'O+', 'O-'],
+      'A-':  ['A-', 'O-'],
+      'B+':  ['B+', 'B-', 'O+', 'O-'],
+      'B-':  ['B-', 'O-'],
+      'AB+': ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+      'AB-': ['A-', 'B-', 'AB-', 'O-'],
+      'O+':  ['O+', 'O-'],
+      'O-':  ['O-'],
+    };
+    return map[_user?.bloodType] ?? [];
   }
 
   @override
   Widget build(BuildContext context) {
+    // ── Loading ────────────────────────────────────────────────
     if (_loading) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator(color: Colors.red)));
+      return const Center(
+          child: CircularProgressIndicator(color: Colors.red));
     }
 
     final isDonor   = _user!.role == 'donor';
     final available = _user!.isAvailable;
     final isDark    = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ── Header ──────────────────────────────────────────────────
-          SliverToBoxAdapter(
-            child: Container(
+    // ── Pas de Scaffold : MainShell le fournit ─────────────────
+    return RefreshIndicator(
+      color: Colors.red,
+      onRefresh: _loadUser,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // 1. Header Bonjour ──────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Colors.red.shade800, Colors.red.shade500],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(28),
-                  bottomRight: Radius.circular(28),
-                ),
+                borderRadius: BorderRadius.circular(20),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
+                  Text('Bonjour 👋',
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 13)),
+                  const SizedBox(height: 2),
+                  Text(_user!.name,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    _Badge(icon: Icons.bloodtype, label: _user!.bloodType),
+                    const SizedBox(width: 8),
+                    _Badge(
+                      icon: isDonor ? Icons.favorite : Icons.local_hospital,
+                      label: isDonor ? 'Donneur' : 'Receveur',
+                    ),
+                    const SizedBox(width: 8),
+                    _Badge(
+                      icon: available ? Icons.check_circle : Icons.timer,
+                      label: available ? 'Disponible' : 'Indisponible',
+                      color: available
+                          ? Colors.green.shade300
+                          : Colors.orange.shade300,
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 2. Toggle disponibilité ────────────────────────────
+            if (isDonor) ...[
+              const _Title('Ma disponibilité'),
+              const SizedBox(height: 10),
+              _Card(
+                isDark: isDark,
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: (available ? Colors.green : Colors.grey)
+                          .withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      available
+                          ? Icons.check_circle_rounded
+                          : Icons.pause_circle_rounded,
+                      color: available ? Colors.green : Colors.grey,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Je suis disponible',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: isDark
+                                    ? Colors.white
+                                    : Colors.black87)),
+                        Text(
+                          available
+                              ? 'Visible pour les receveurs'
+                              : 'Masqué des recherches',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: available,
+                    activeColor: Colors.red.shade600,
+                    onChanged: (_) => _toggleAvailability(),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 20),
+            ],
+
+            // 3. Statut donneur ───────────────────────────────────
+            if (isDonor) ...[
+              const _Title('Mon statut de donneur'),
+              const SizedBox(height: 10),
+              _Card(
+                isDark: isDark,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(
+                        available
+                            ? Icons.check_circle_rounded
+                            : Icons.timer_rounded,
+                        color: available ? Colors.green : Colors.orange,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Bonjour 👋',
-                              style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 14),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _user!.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          available
+                              ? 'Vous pouvez donner votre sang'
+                              : 'Période de repos en cours',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: available
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade700),
                         ),
                       ),
-                      // Avatar
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        child: Text(
-                          _user!.name.isNotEmpty
-                              ? _user!.name[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                    ]),
+                    if (!available) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Récupération',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500)),
+                            Text('${_daysRemaining()} jours restants',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.orange.shade700)),
+                          ]),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: _availabilityProgress(),
+                          minHeight: 8,
+                          backgroundColor: Colors.orange.shade100,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.orange.shade400),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Icon(Icons.calendar_today,
+                            size: 14, color: Colors.grey.shade500),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Prochain don possible : ${_nextDonationDate()}',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ]),
+                    ],
+                    if (available) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _markDonated,
+                          icon: const Icon(Icons.favorite, size: 18),
+                          label: const Text("J'ai donné mon sang"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
                           ),
                         ),
                       ),
                     ],
-                  ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
 
-                  const SizedBox(height: 16),
-
-                  // Badges
-                  Row(
-                    children: [
-                      _HeaderBadge(
-                        icon: Icons.bloodtype,
-                        label: _user!.bloodType,
+            // 4. Groupes compatibles ─────────────────────────────
+            const _Title('Groupes compatibles avec moi'),
+            const SizedBox(height: 10),
+            _Card(
+              isDark: isDark,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Mon groupe : ${_user!.bloodType}',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade500)),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _compatibleGroups().map((g) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.red.shade200),
                       ),
-                      const SizedBox(width: 8),
-                      _HeaderBadge(
-                        icon: isDonor ? Icons.favorite : Icons.local_hospital,
-                        label: isDonor ? 'Donneur' : 'Receveur',
-                      ),
-                      const SizedBox(width: 8),
-                      _HeaderBadge(
-                        icon: available ? Icons.check_circle : Icons.timer,
-                        label: available ? 'Disponible' : 'Indisponible',
-                        color: available
-                            ? Colors.green.shade300
-                            : Colors.orange.shade300,
-                      ),
-                    ],
+                      child: Text(g,
+                          style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13)),
+                    )).toList(),
                   ),
                 ],
               ),
             ),
-          ),
 
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
+            const SizedBox(height: 20),
 
-                // ── Carte statut donneur ──────────────────────────────
-                if (isDonor) ...[
-                  _SectionTitle(title: 'Mon statut de donneur'),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF1E1E1E)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              available
-                                  ? Icons.check_circle_rounded
-                                  : Icons.timer_rounded,
-                              color:
-                              available ? Colors.green : Colors.orange,
-                              size: 22,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              available
-                                  ? 'Vous pouvez donner votre sang'
-                                  : 'Période de repos en cours',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                                color: available
-                                    ? Colors.green.shade700
-                                    : Colors.orange.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Barre de progression
-                        if (!available) ...[
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Récupération',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade500)),
-                              Text('${_daysRemaining()} jours restants',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.orange.shade700)),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: _availabilityProgress(),
-                              minHeight: 8,
-                              backgroundColor: Colors.orange.shade100,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.orange.shade400),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today,
-                                  size: 14,
-                                  color: Colors.grey.shade500),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Prochain don possible : ${_nextDonationDate()}',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        ],
-
-                        // Bouton J'ai donné
-                        if (available) ...[
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _markDonated,
-                              icon: const Icon(Icons.favorite, size: 18),
-                              label: const Text("J'ai donné mon sang"),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.shade600,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                    BorderRadius.circular(14)),
-                                elevation: 0,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                // ── Actions rapides ──────────────────────────────────
-                _SectionTitle(title: 'Actions rapides'),
-                const SizedBox(height: 10),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.25,
-                  children: [
-                    _QuickCard(
-                      icon: Icons.search_rounded,
-                      label: 'Chercher un donneur',
-                      subtitle: 'Trouver par groupe',
-                      color: Colors.red,
-                      onTap: () {},
-                    ),
-                    _QuickCard(
-                      icon: Icons.document_scanner_rounded,
-                      label: 'Scanner document',
-                      subtitle: 'OCR + Traduction',
-                      color: Colors.orange,
-                      onTap: () {},
-                    ),
-                    _QuickCard(
-                      icon: Icons.swap_horiz_rounded,
-                      label: 'Changer de rôle',
-                      subtitle: isDonor ? 'Devenir receveur' : 'Devenir donneur',
-                      color: Colors.purple,
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/choose-role'),
-                    ),
-                    _QuickCard(
-                      icon: Icons.person_rounded,
-                      label: 'Mon profil',
-                      subtitle: 'Voir mes infos',
-                      color: Colors.blue,
-                      onTap: () =>
-                          Navigator.pushNamed(context, '/profile'),
-                    ),
-                  ],
+            // 5. Actions rapides ─────────────────────────────────
+            const _Title('Actions rapides'),
+            const SizedBox(height: 10),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.25,
+              children: [
+                _QuickCard(
+                  icon: Icons.search_rounded,
+                  label: 'Chercher un donneur',
+                  subtitle: 'Trouver par groupe',
+                  color: Colors.red,
+                  onTap: () {},
                 ),
+                _QuickCard(
+                  icon: Icons.document_scanner_rounded,
+                  label: 'Scanner document',
+                  subtitle: 'OCR + Traduction',
+                  color: Colors.orange,
+                  onTap: () {},
+                ),
+                _QuickCard(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Changer de rôle',
+                  subtitle: isDonor ? 'Devenir receveur' : 'Devenir donneur',
+                  color: Colors.purple,
+                  onTap: () => Navigator.pushNamed(context, '/choose-role'),
+                ),
+                _QuickCard(
+                  icon: Icons.person_rounded,
+                  label: 'Mon profil',
+                  subtitle: 'Voir mes infos',
+                  color: Colors.blue,
+                  onTap: () => Navigator.pushNamed(context, '/profile'),
+                ),
+              ],
+            ),
 
-                const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-                // ── Info card ────────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.red.shade50,
-                        Colors.pink.shade50,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.red.shade100),
-                  ),
-                  child: Row(
+            // 6. Le saviez-vous ──────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.red.shade100),
+              ),
+              child: Row(children: [
+                Icon(Icons.info_outline,
+                    color: Colors.red.shade400, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline,
-                          color: Colors.red.shade400, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Le saviez-vous ?',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red.shade700,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Un don de sang peut sauver jusqu\'à 3 vies. Le délai entre deux dons est de 90 jours.',
-                              style: TextStyle(
-                                color: Colors.red.shade600,
-                                fontSize: 12,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
+                      Text('Le saviez-vous ?',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red.shade700,
+                              fontSize: 13)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Un don de sang peut sauver jusqu\'à 3 vies. '
+                            'Le délai entre deux dons est de 90 jours.',
+                        style: TextStyle(
+                            color: Colors.red.shade600,
+                            fontSize: 12,
+                            height: 1.4),
                       ),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 20),
               ]),
             ),
-          ),
-        ],
+
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Widgets locaux ────────────────────────────────────────────────────────────
+// ── Widgets locaux ────────────────────────────────────────────────────────
 
-class _HeaderBadge extends StatelessWidget {
+class _Card extends StatelessWidget {
+  final Widget child;
+  final bool isDark;
+  const _Card({required this.child, required this.isDark});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _Title extends StatelessWidget {
+  final String title;
+  const _Title(this.title);
+  @override
+  Widget build(BuildContext context) =>
+      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold));
+}
+
+class _Badge extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color? color;
-  const _HeaderBadge({required this.icon, required this.label, this.color});
-
+  const _Badge({required this.icon, required this.label, this.color});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -461,31 +527,15 @@ class _HeaderBadge extends StatelessWidget {
         color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color ?? Colors.white, size: 13),
-          const SizedBox(width: 5),
-          Text(label,
-              style: TextStyle(
-                  color: color ?? Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color ?? Colors.white, size: 13),
+        const SizedBox(width: 5),
+        Text(label,
+            style: TextStyle(
+                color: color ?? Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500)),
+      ]),
     );
   }
 }
@@ -500,7 +550,6 @@ class _QuickCard extends StatelessWidget {
     required this.icon, required this.label,
     required this.subtitle, required this.color, required this.onTap,
   });
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -515,7 +564,8 @@ class _QuickCard extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
-              blurRadius: 10, offset: const Offset(0, 3),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),

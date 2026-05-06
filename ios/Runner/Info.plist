@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+    <string>Accès caméra pour scanner les documents médicaux</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Accès galerie pour choisir un document médical</string>
+
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Sauvegarder des photos depuis l'application</string>
 </dict>
 </plist>
